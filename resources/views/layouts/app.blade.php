@@ -64,7 +64,7 @@
     <div class="container-fluid px-4">
         <a class="navbar-brand d-flex align-items-center gap-2" href="{{ route('dashboard') }}">
             <i class="bi bi-gem fs-4"></i>
-            <span>Prediksi Harga Emas <small class="fw-light opacity-75">· tsQRF</small></span>
+            <span>Prediksi Harga Emas</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Buka menu">
             <span class="navbar-toggler-icon"></span>

@@ -2,6 +2,8 @@
 
 Aplikasi web untuk melihat data harga emas dan memprediksi harga emas sebagai **rentang nilai** (dari X hingga Y) menggunakan metode **Random Forest dengan Quantile Regression (tsQRF)**, sesuai panduan skripsi (`panduanskipsi.pdf`).
 
+> 📘 **Sedang installing di komputer sendiri?** Baca **[PANDUAN-INSTALLASI.md](PANDUAN-INSTALLASI.md)** — berisi langkah demi langkah (XAMPP, Composer,VS Code, database, admin, data contoh) plus daftar perintah dan troubleshoot.
+
 ## Fitur
 
 - **Dashboard**: ringkasan singkat (harga terakhir, total data) dan tabel data emas (pencarian + pagination).

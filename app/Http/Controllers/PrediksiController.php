@@ -15,6 +15,9 @@ class PrediksiController extends Controller
 
         $history = GoldPrice::query()->orderBy('tanggal')->get(['tanggal', 'terakhir']);
 
+        // harga emas terakhir yang tercatat — dipakai sebagai pembanding di tabel peramalan
+        $latestPrice = GoldPrice::query()->orderByDesc('tanggal')->first();
+
         $testPredictions = $modelRun
             ? $modelRun->predictions()->where('kind', 'test')->orderBy('tanggal')->get()
             : collect();
@@ -26,6 +29,7 @@ class PrediksiController extends Controller
             'modelRun',
             'processing',
             'history',
+            'latestPrice',
             'testPredictions',
             'forecastPredictions'
         ));

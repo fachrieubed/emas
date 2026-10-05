@@ -7,8 +7,16 @@
     $fmt = fn ($v, $dec = 0) => number_format((float) $v, $dec, ',', '.');
     $model = $modelRun;
     $next = $forecastPredictions->first();
-    $historyLabels = $history->map(fn ($h) => $h->tanggal->format('d/m/Y'));
-    $historyValues = $history->map(fn ($h) => (float) $h->terakhir);
+    // 5 hari ke depan untuk kotak prediksi utama
+    $forecastDays = $forecastPredictions->take(5)->values();
+    $forecastTotal = $forecastPredictions->count();
+    // grafik historis — disimpan per titik (tanggal + harga) supaya bisa difilter
+    // per tahun / per bulan di sisi browser tanpa query ulang
+    $historyPoints = $history->map(fn ($h) => [
+        'd' => $h->tanggal->format('Y-m-d'),
+        'v' => (float) $h->terakhir,
+    ])->values();
+    $historyYears = $history->map(fn ($h) => $h->tanggal->format('Y'))->unique()->sortDesc()->values();
 
     // evaluasi testing — ambil 90 titik terakhir agar grafik mudah dibaca
     $testSlice = $testPredictions->slice(-90)->values();
@@ -54,24 +62,44 @@
 {{-- ===================== PREDIKSI HARGA (RENTANG) ===================== --}}
 <div class="row g-3 mb-4">
     <div class="col-lg-7">
-        <div class="range-box p-4 h-100 d-flex flex-column justify-content-center">
+        <div class="range-box p-4 h-100 d-flex flex-column">
             @if ($model && $next)
-                <div class="d-flex align-items-center gap-2 mb-1">
-                    <span class="badge badge-gold"><i class="bi bi-graph-up-arrow me-1"></i>Prediksi harga {{ $next->tanggal->format('d/m/Y') }}</span>
-                    @if ($next->q90 >= 0)
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <span class="badge badge-gold"><i class="bi bi-graph-up-arrow me-1"></i>Prediksi Harga {{ $forecastDays->count() }} Hari ke Depan</span>
                     <span class="text-muted small">Rentang 80% (Q10–Q90)</span>
-                    @endif
                 </div>
-                <div class="d-flex flex-wrap align-items-end gap-3">
-                    <div>
-                        <div class="fs-range">
-                            {{ $fmt($next->q10, 0) }}
-                            <span class="opacity-60 px-1">–</span>
-                            {{ $fmt($next->q90, 0) }}
+
+                <div class="d-flex flex-column gap-2 flex-grow-1 justify-content-center">
+                    @foreach ($forecastDays as $i => $fp)
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 bg-white rounded border">
+                            <div class="me-auto">
+                                <div class="fw-semibold">
+                                    {{ $fp->tanggal->format('d/m/Y') }}
+                                    @if ($i === 0)
+                                        <span class="badge text-bg-light border ms-1">Besok</span>
+                                    @else
+                                        <span class="badge text-bg-light border ms-1">+{{ $i + 1 }} hari</span>
+                                    @endif
+                                </div>
+                                <div class="small text-muted">
+                                    Nilai tengah (Q50): <b class="text-dark">{{ $fmt($fp->q50, 2) }}</b>
+                                </div>
+                            </div>
+                            <div class="fs-range" style="font-size:1.35rem">
+                                {{ $fmt($fp->q10, 0) }}
+                                <span class="opacity-60 px-1">–</span>
+                                {{ $fmt($fp->q90, 0) }}
+                            </div>
                         </div>
-                        <div class="stat-label text-muted">Nilai tengah (Q50): <b class="text-dark">{{ $fmt($next->q50, 2) }}</b></div>
-                    </div>
+                    @endforeach
                 </div>
+
+                @if ($forecastTotal > $forecastDays->count())
+                    <small class="text-muted mt-3 mb-0">
+                        Sisa {{ $forecastTotal - $forecastDays->count() }} hari berikutnya ada di tabel
+                        <a href="#hasil-peramalan" class="text-decoration-none">Hasil Peramalan</a> di bawah.
+                    </small>
+                @endif
             @else
                 <h4 class="text-gold mb-2"><i class="bi bi-bullseye me-2"></i>Belum ada hasil prediksi</h4>
                 <p class="mb-3 text-muted">Unggah data emas (CSV) lalu model tsQRF akan melatih <b>500 pohon</b> dan menghasilkan
@@ -143,15 +171,27 @@
 
 {{-- ===================== GRAFIK ===================== --}}
 <div class="row g-3 mb-4">
-    <div class="col-xl-5">
+    <div class="col-xl-6">
         <div class="card h-100">
             <div class="card-body">
-                <h6 class="section-title mb-3"><i class="bi bi-activity text-gold me-2"></i>Harga Emas Historis</h6>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+                    <h6 class="section-title mb-0"><i class="bi bi-activity text-gold me-2"></i>Harga Emas Historis</h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="histMode" class="form-select form-select-sm" style="width:auto" aria-label="Mode tampilan grafik">
+                            <option value="all">Semua Periode</option>
+                            <option value="year" selected>Per Tahun</option>
+                            <option value="month">Per Bulan</option>
+                        </select>
+                        <select id="histYear" class="form-select form-select-sm" style="width:auto" aria-label="Pilih tahun"></select>
+                        <select id="histMonth" class="form-select form-select-sm" style="width:auto; display:none" aria-label="Pilih bulan"></select>
+                    </div>
+                </div>
+                <small class="text-muted d-block mb-2" id="histInfo"></small>
                 <canvas id="chartHistory" height="150"></canvas>
             </div>
         </div>
     </div>
-    <div class="col-xl-7">
+    <div class="col-xl-6">
         <div class="card h-100">
             <div class="card-body">
                 <h6 class="section-title mb-1"><i class="bi bi-clipboard-data text-gold me-2"></i>Evaluasi Model pada Data Testing</h6>
@@ -175,7 +215,7 @@
 </div>
 
 {{-- ===================== TABEL PERAMALAN ===================== --}}
-<div class="card mb-4">
+<div class="card mb-4" id="hasil-peramalan">
     <div class="card-header bg-transparent">
         <h6 class="section-title mb-0"><i class="bi bi-table text-gold me-2"></i>Hasil Peramalan Harga Emas</h6>
     </div>
@@ -186,6 +226,11 @@
                     <th>Tanggal</th>
                     <th class="text-end">Batas Bawah (Q10)</th>
                     <th class="text-end">Nilai Tengah (Q50)</th>
+                    <th class="text-end">Harga Terakhir
+                        @if ($latestPrice)
+                            <br><small class="fw-normal text-lowercase" style="font-size:.68rem">{{ $latestPrice->tanggal->format('d/m/Y') }}</small>
+                        @endif
+                    </th>
                     <th class="text-end">Batas Atas (Q90)</th>
                     <th class="text-end">Rentang</th>
                 </tr>
@@ -196,12 +241,21 @@
                     <td class="fw-semibold">{{ $fp->tanggal->format('d/m/Y') }}</td>
                     <td class="text-end">{{ $fmt($fp->q10, 0) }}</td>
                     <td class="text-end fw-bold">{{ $fmt($fp->q50, 2) }}</td>
+                    <td class="text-end text-muted">
+                        {{ $latestPrice ? $fmt($latestPrice->terakhir, 2) : '-' }}
+                    </td>
                     <td class="text-end">{{ $fmt($fp->q90, 0) }}</td>
                     <td class="text-end text-gold">{{ $fmt($fp->q90 - $fp->q10, 0) }}</td>
                 </tr>
                 @endforeach
             </tbody>
         </table>
+    </div>
+    <div class="card-footer bg-transparent small text-muted">
+        <i class="bi bi-info-circle me-1"></i>
+        Kolom <b>Harga Terakhir</b> berisi harga emas terakhir yang tercatat
+        ({{ $latestPrice ? $latestPrice->tanggal->format('d/m/Y') : '-' }}), dipakai sebagai pembanding
+        nilai tengah prediksi.
     </div>
 </div>
 @else
@@ -218,15 +272,67 @@
 
 @push('scripts')
 <script>
-    // ---------- Chart 1: Historia ----------
+    // ---------- Chart 1: Harga Emas Historis (bisa per tahun / per bulan) ----------
     @if ($history->count() > 0)
-    new Chart(document.getElementById('chartHistory'), {
+    const HIST_POINTS = @json($historyPoints);
+    const HIST_YEARS = @json($historyYears);
+    const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+    const elMode = document.getElementById('histMode');
+    const elYear = document.getElementById('histYear');
+    const elMonth = document.getElementById('histMonth');
+    const elInfo = document.getElementById('histInfo');
+
+    elYear.innerHTML = HIST_YEARS.map(y => `<option value="${y}">${y}</option>`).join('');
+
+    // bulan yang benar-benar punya data pada tahun terpilih
+    function isiPilihanBulan() {
+        const y = elYear.value;
+        const ms = [...new Set(HIST_POINTS.filter(p => p.d.slice(0, 4) === y).map(p => p.d.slice(5, 7)))].sort();
+        elMonth.innerHTML = ms.map(m => `<option value="${m}">${BULAN[Number(m) - 1]}</option>`).join('');
+    }
+
+    function susunSeries() {
+        const mode = elMode.value;
+
+        if (mode === 'year') {
+            const y = elYear.value;
+            const pts = HIST_POINTS.filter(p => p.d.slice(0, 4) === y);
+            return {
+                pts,
+                labels: pts.map(p => p.d.slice(8, 10) + '/' + p.d.slice(5, 7)),
+                teks: 'Data harian \u00b7 tahun ' + y
+            };
+        }
+
+        if (mode === 'month') {
+            const y = elYear.value;
+            const m = elMonth.value;
+            const pts = HIST_POINTS.filter(p => p.d.slice(0, 4) === y && p.d.slice(5, 7) === m);
+            return {
+                pts,
+                labels: pts.map(p => p.d.slice(8, 10)),
+                teks: 'Data harian \u00b7 ' + (BULAN[Number(m) - 1] || '-') + ' ' + y
+            };
+        }
+
+        // semua periode -> rata-rata bulanan supaya tidak terlalu padat
+        const groups = {};
+        HIST_POINTS.forEach(p => (groups[p.d.slice(0, 7)] ||= []).push(p.v));
+        const pts = Object.keys(groups).sort().map(k => ({
+            v: groups[k].reduce((a, b) => a + b, 0) / groups[k].length,
+            label: BULAN[Number(k.slice(5, 7)) - 1].slice(0, 3) + ' ' + k.slice(0, 4)
+        }));
+        return { pts, labels: pts.map(p => p.label), teks: 'Rata-rata bulanan \u00b7 seluruh periode' };
+    }
+
+    const chartHistory = new Chart(document.getElementById('chartHistory'), {
         type: 'line',
         data: {
-            labels: @json($historyLabels),
+            labels: [],
             datasets: [{
                 label: 'Harga Terakhir',
-                data: @json($historyValues),
+                data: [],
                 borderColor: '#c9a227',
                 backgroundColor: 'rgba(201,162,39,.15)',
                 pointRadius: 0,
@@ -240,11 +346,56 @@
             plugins: { legend: { display: false } },
             interaction: { mode: 'index', intersect: false },
             scales: {
-                x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+                x: { ticks: { maxTicksLimit: 12, maxRotation: 0, autoSkip: true } },
                 y: { ticks: { callback: v => fmtId(v) } }
             }
         }
     });
+
+    function gambarHistory() {
+        const { pts, labels, teks } = susunSeries();
+        chartHistory.data.labels = labels;
+        chartHistory.data.datasets[0].data = pts.map(p => p.v);
+        chartHistory.update();
+
+        const values = pts.map(p => p.v);
+
+        if (values.length) {
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            const awal = pts[0].d ? pts[0].d.split('-').reverse().join('/') : labels[0];
+            const akhir = pts[pts.length - 1].d ? pts[pts.length - 1].d.split('-').reverse().join('/') : labels[labels.length - 1];
+
+            elInfo.textContent = teks + ' \u00b7 ' + values.length + ' titik (' + awal + ' \u2013 ' + akhir + ')'
+                + ' \u00b7 min ' + fmtId(min) + ' \u00b7 rata-rata ' + fmtId(avg) + ' \u00b7 max ' + fmtId(max);
+        } else {
+            elInfo.textContent = teks + ' \u00b7 tidak ada data pada periode ini.';
+        }
+    }
+
+    function sinkronKontrol() {
+        const mode = elMode.value;
+        elYear.style.display = mode === 'all' ? 'none' : '';
+        elMonth.style.display = mode === 'month' ? '' : 'none';
+
+        if (mode !== 'all' && !elYear.value) {
+            elYear.value = HIST_YEARS[0];
+        }
+        if (mode === 'month') {
+            isiPilihanBulan();
+        }
+    }
+
+    elMode.addEventListener('change', () => { sinkronKontrol(); gambarHistory(); });
+    elYear.addEventListener('change', () => {
+        if (elMode.value === 'month') isiPilihanBulan();
+        gambarHistory();
+    });
+    elMonth.addEventListener('change', gambarHistory);
+
+    sinkronKontrol();
+    gambarHistory();
     @endif
 
     // ---------- Chart 2: Evaluasi Testing ----------
