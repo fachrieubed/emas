@@ -55,13 +55,28 @@
     </div>
 </div>
 
-<div class="alert alert-light border d-flex flex-wrap align-items-center gap-2 mb-4">
-    <i class="bi bi-arrow-repeat text-gold fs-5"></i>
-    <span class="small mb-0">
-        <b>Pembaruan otomatis aktif:</b> data emas ditarik otomatis setiap hari pukul <b>05:15 WIB</b> (saat pasar emas buka) dari Yahoo Finance
-        (baris akhir pekan &amp; kolom kosong otomatis dibuang, tanggal yang bolong ditambal), lalu model dilatih ulang.
-        Upload CSV manual tetap bisa dilakukan di bawah.
-    </span>
+<div class="alert alert-light border mb-4">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <i class="bi bi-arrow-repeat {{ ($lastSync['status'] ?? '') === 'error' ? 'text-danger' : 'text-gold' }} fs-5"></i>
+        <span class="small mb-0">
+            <b>Pembaruan otomatis aktif:</b> data emas ditarik otomatis setiap hari pukul <b>05:15 WIB</b> (saat pasar emas buka) dari Yahoo Finance
+            (baris akhir pekan &amp; kolom kosong otomatis dibuang, tanggal yang bolong ditambal), lalu model dilatih ulang.
+            Upload CSV manual tetap bisa dilakukan di bawah.
+        </span>
+    </div>
+    <div class="small mt-2 pt-2 border-top">
+        @if ($lastSync && ($lastSync['status'] ?? 'ok') === 'ok')
+            <i class="bi bi-clock-history me-1"></i>Terakhir sinkron:
+            <b>{{ \Carbon\Carbon::parse($lastSync['at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i') }} WIB</b>
+            · {{ number_format((int) ($lastSync['total'] ?? 0), 0, ',', '.') }} baris
+            @if (!empty($lastSync['latest_date'])) · data s/d {{ \Carbon\Carbon::parse($lastSync['latest_date'])->format('d/m/Y') }} @endif
+            · {{ (int) ($lastSync['inserted'] ?? 0) }} baru / {{ (int) ($lastSync['updated'] ?? 0) }} diperbarui
+        @elseif ($lastSync && ($lastSync['status'] ?? '') === 'error')
+            <i class="bi bi-exclamation-triangle me-1 text-danger"></i><span class="text-danger">Sinkronisasi otomatis terakhir gagal: {{ $lastSync['message'] ?? '' }}</span>
+        @else
+            <i class="bi bi-info-circle me-1"></i>Belum ada catatan sinkronisasi. Jalankan <code>php artisan gold:update</code> atau tunggu jadwal otomatis.
+        @endif
+    </div>
 </div>
 
 <div class="card mb-4">

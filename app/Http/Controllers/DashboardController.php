@@ -6,6 +6,7 @@ use App\Models\GoldPrice;
 use App\Models\ModelRun;
 use App\Models\Upload;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
@@ -28,6 +29,8 @@ class DashboardController extends Controller
             ? $modelRun->predictions()->where('kind', 'forecast')->orderBy('tanggal')->get()
             : collect();
 
+        $lastSync = Cache::get('gold.last_sync');
+
         return view('dashboard', compact(
             'latest',
             'totalData',
@@ -37,7 +40,8 @@ class DashboardController extends Controller
             'lastUpload',
             'history',
             'testPredictions',
-            'forecastPredictions'
+            'forecastPredictions',
+            'lastSync'
         ));
     }
 

@@ -7,6 +7,7 @@ use App\Services\GoldDataFetcher;
 use App\Services\TrainingService;
 use Exception;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -23,6 +24,9 @@ use Illuminate\Support\Facades\Log;
  */
 class UpdateGoldData extends Command
 {
+    /** Kunci cache untuk menyimpan info sinkronisasi terakhir (dibaca halaman web). */
+    private const SYNC_KEY = 'gold.last_sync';
+
     protected $signature = 'gold:update
         {--days=90 : Rentang hari untuk menyegarkan data terbaru}
         {--no-retrain : Jangan latih ulang model setelah data diperbarui}
@@ -53,6 +57,11 @@ class UpdateGoldData extends Command
         } catch (Exception $e) {
             $this->error($e->getMessage());
             Log::error('gold:update gagal mengambil data: ' . $e->getMessage());
+            $this->recordSync([
+                'status' => 'error',
+                'source' => 'Yahoo Finance (GC=F)',
+                'message' => $e->getMessage(),
+            ]);
 
             return self::FAILURE;
         }
@@ -126,6 +135,21 @@ class UpdateGoldData extends Command
 
         Log::info('gold:update selesai', compact('inserted', 'updated', 'kept', 'deletedWeekend', 'deletedEmpty', 'changed'));
 
+        $this->recordSync([
+            'status' => 'ok',
+            'source' => 'Yahoo Finance (GC=F)',
+            'inserted' => $inserted,
+            'updated' => $updated,
+            'kept' => $kept,
+            'deleted_weekend' => $deletedWeekend,
+            'deleted_empty' => $deletedEmpty,
+            'changed' => $changed,
+            'total' => GoldPrice::query()->weekdaysOnly()->count(),
+            'latest_date' => GoldPrice::query()->weekdaysOnly()->max('tanggal'),
+            'retrain' => $this->option('no-retrain') ? 'skipped' : 'pending',
+            'message' => null,
+        ]);
+
         if (!$this->option('no-retrain') && ($inserted + $updated) > 0) {
             $this->info('Melatih ulang model tsQRF dengan data terbaru...');
 
@@ -141,14 +165,36 @@ class UpdateGoldData extends Command
                 ]);
 
                 $this->info("Model diperbarui (model run #{$modelRun->id}, status {$modelRun->status}).");
+                $this->recordSync(['retrain' => 'ok', 'model_run_id' => $modelRun->id]);
             } catch (Exception $e) {
                 $this->error('Data tersimpan, tetapi pelatihan ulang gagal: ' . $e->getMessage());
+                $this->recordSync(['retrain' => 'failed', 'message' => 'Pelatihan ulang gagal: ' . $e->getMessage()]);
 
                 return self::FAILURE;
             }
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Simpan ringkasan sinkronisasi terakhir ke cache agar bisa ditampilkan di web
+     * ("terakhir sinkron otomatis: ...").
+     */
+    private function recordSync(array $data): void
+    {
+        try {
+            $current = Cache::get(self::SYNC_KEY, []);
+
+            Cache::forever(self::SYNC_KEY, array_merge(
+                is_array($current) ? $current : [],
+                ['at' => now()->toIso8601String()],
+                $data
+            ));
+        } catch (\Throwable $e) {
+            // Gagal menyimpan info tidak boleh menggagalkan proses sinkronisasi.
+            Log::warning('Gagal menyimpan info sinkronisasi: ' . $e->getMessage());
+        }
     }
 
     /**

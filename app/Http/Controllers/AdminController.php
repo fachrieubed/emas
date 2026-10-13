@@ -8,6 +8,7 @@ use App\Models\Prediction;
 use App\Models\Upload;
 use App\Support\BackgroundProcess;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -29,8 +30,9 @@ class AdminController extends Controller
 
         $modelRun = ModelRun::query()->where('status', 'done')->latest('id')->first();
         $processing = Upload::query()->where('status', 'processing')->latest()->first();
+        $lastSync = Cache::get('gold.last_sync');
 
-        return view('admin.index', compact('data', 'modelRun', 'processing'));
+        return view('admin.index', compact('data', 'modelRun', 'processing', 'lastSync'));
     }
 
     public function upload(Request $request)

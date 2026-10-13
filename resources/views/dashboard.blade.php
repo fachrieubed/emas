@@ -25,6 +25,25 @@
     </a>
 </div>
 
+{{-- ===================== STATUS SINKRONISASI ===================== --}}
+<div class="alert alert-light border d-flex flex-wrap align-items-center gap-2 mb-4 py-2">
+    <i class="bi bi-arrow-repeat {{ ($lastSync['status'] ?? '') === 'error' ? 'text-danger' : 'text-gold' }}"></i>
+    <span class="small mb-0">
+        @if ($lastSync && ($lastSync['status'] ?? 'ok') === 'ok')
+            <b>Pembaruan otomatis aktif.</b> Terakhir sinkron:
+            <b>{{ \Carbon\Carbon::parse($lastSync['at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i') }} WIB</b>
+            ({{ $lastSync['source'] ?? 'Yahoo Finance (GC=F)' }})
+            @if (!empty($lastSync['latest_date']))
+                · data terakhir {{ \Carbon\Carbon::parse($lastSync['latest_date'])->format('d/m/Y') }}
+            @endif
+        @elseif ($lastSync && ($lastSync['status'] ?? '') === 'error')
+            <span class="text-danger"><b>Sinkronisasi otomatis terakhir gagal.</b> {{ $lastSync['message'] ?? '' }}</span>
+        @else
+            <b>Pembaruan otomatis:</b> data ditarik setiap hari pukul <b>05:15 WIB</b> (sumber: Yahoo Finance <code>GC=F</code>).
+        @endif
+    </span>
+</div>
+
 {{-- ===================== RINGKASAN ===================== --}}
 <div class="row g-3 mb-4">
     <div class="col-md-4">
