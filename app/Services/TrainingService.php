@@ -156,8 +156,8 @@ class TrainingService
         array $params,
         callable $progress,
     ): ModelRun {
-        // 3. Preprocessing + feature engineering
-        $progress('Membangun fitur (Lag_1..3) dan target...');
+        // 3. Preprocessing + feature engineering (fitur & target berupa rasio %)
+        $progress('Membangun fitur relatif (OHLC/Perubahan/Lag_1..3 terhadap penutupan) dan target return...');
         $pre = $this->preprocessor->build($rows);
 
         // 4. Training + evaluasi + forecast
@@ -172,11 +172,12 @@ class TrainingService
         File::ensureDirectoryExists(storage_path('app/' . self::MODEL_DIR));
         File::put(storage_path('app/' . $modelPath), $model->serialize());
 
-        // 6. Simpan evaluasi
+        // 6. Simpan evaluasi (periode dinilai pada tanggal target tiap sampel)
+        $sampleDates = $pre['sampleDates'] ?? $pre['dates'];
         $trainStart = $pre['dates'][0] ?? null;
-        $trainEnd = $pre['dates'][$result['split'] - 1] ?? null;
-        $testStart = $pre['dates'][$result['split']] ?? null;
-        $testEnd = $pre['dates'][count($pre['dates']) - 1] ?? null;
+        $trainEnd = $sampleDates[$result['split'] - 1] ?? null;
+        $testStart = $sampleDates[$result['split']] ?? null;
+        $testEnd = $sampleDates[count($sampleDates) - 1] ?? null;
 
         $modelRun->update([
             'status' => 'done',

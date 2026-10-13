@@ -7,8 +7,8 @@
     $fmt = fn ($v, $dec = 0) => number_format((float) $v, $dec, ',', '.');
     $model = $modelRun;
     $next = $forecastPredictions->first();
-    // 5 hari ke depan untuk kotak prediksi utama
-    $forecastDays = $forecastPredictions->take(5)->values();
+    // 3 hari ke depan untuk kotak prediksi utama
+    $forecastDays = $forecastPredictions->take(3)->values();
     $forecastTotal = $forecastPredictions->count();
     // grafik historis — disimpan per titik (tanggal + harga) supaya bisa difilter
     // per tahun / per bulan di sisi browser tanpa query ulang
@@ -64,9 +64,14 @@
     <div class="col-lg-7">
         <div class="range-box p-4 h-100 d-flex flex-column">
             @if ($model && $next)
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                     <span class="badge badge-gold"><i class="bi bi-graph-up-arrow me-1"></i>Prediksi Harga {{ $forecastDays->count() }} Hari ke Depan</span>
-                    <span class="text-muted small">Rentang 80% (Q10–Q90)</span>
+                    <span class="text-muted small">Rentang 80%</span>
+                </div>
+                <div class="alert alert-light border py-2 small mb-3">
+                    <b>Q10 = batas bawah</b> · <b>Q90 = batas atas</b> · <b>Q50 = nilai tengah</b>.
+                    Artinya harga diprediksi <b>berada di antara batas bawah dan atas</b> —
+                    <b class="text-dark">bukan harga pembuka / harga penutup</b>.
                 </div>
 
                 <div class="d-flex flex-column gap-2 flex-grow-1 justify-content-center">
@@ -85,10 +90,15 @@
                                     Nilai tengah (Q50): <b class="text-dark">{{ $fmt($fp->q50, 2) }}</b>
                                 </div>
                             </div>
-                            <div class="fs-range" style="font-size:1.35rem">
-                                {{ $fmt($fp->q10, 0) }}
-                                <span class="opacity-60 px-1">–</span>
-                                {{ $fmt($fp->q90, 0) }}
+                            <div class="text-end">
+                                <div class="fs-range" style="font-size:1.35rem">
+                                    {{ $fmt($fp->q10, 0) }}
+                                    <span class="opacity-60 px-1">s/d</span>
+                                    {{ $fmt($fp->q90, 0) }}
+                                </div>
+                                <div class="small text-muted">
+                                    bawah (Q10) &ndash; atas (Q90) &middot; lebar {{ $fmt($fp->q90 - $fp->q10, 0) }}
+                                </div>
                             </div>
                         </div>
                     @endforeach
@@ -134,11 +144,8 @@
 {{-- ===================== METRIK MODEL ===================== --}}
 <div class="row g-3 mb-4">
     @foreach ([
-        ['MAE', number_format((float) $model->mae, 0, ',', '.')],
-        ['RMSE', number_format((float) $model->rmse, 0, ',', '.')],
-        ['MAPE', number_format((float) $model->mape, 2, ',', '.') . '%'],
         ['Coverage Q10–Q90', number_format((float) $model->coverage, 2, ',', '.') . '%'],
-        ['Lebar Interval Rata²', number_format((float) $model->avg_interval_width, 0, ',', '.')],
+        ['Lebar Interval Rata-rata', number_format((float) $model->avg_interval_width, 0, ',', '.')],
     ] as $m)
     <div class="col-6 col-md-4 col-xl">
         <div class="card h-100">
@@ -149,21 +156,12 @@
         </div>
     </div>
     @endforeach
-    <div class="col-12 col-md-6 col-xl">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100">
             <div class="card-body py-3">
                 <div class="stat-label">Periode Uji (Testing)</div>
                 <div class="stat-value mt-1 small lh-base">{{ optional($model->test_start)->format('d/m/Y') }} – {{ optional($model->test_end)->format('d/m/Y') }}</div>
                 <small class="text-muted">{{ $model->train_rows }} train · {{ $model->test_rows }} test · {{ number_format((float) $model->training_seconds, 1, ',', '.') }} dtk latih</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl">
-        <div class="card h-100">
-            <div class="card-body py-3">
-                <div class="stat-label">Konfigurasi Model tsQRF</div>
-                <div class="stat-value mt-1 small lh-base">{{ $model->n_estimators }} pohon · min_leaf {{ $model->min_samples_leaf }} · {{ $model->max_features }}</div>
-                <small class="text-muted">split {{ number_format((float) $model->split_ratio * 100, 0, ',', '.') }}% · seed {{ $model->random_state }} · horizon {{ $model->horizon }} hari</small>
             </div>
         </div>
     </div>

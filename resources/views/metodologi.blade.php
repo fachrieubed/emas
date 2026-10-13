@@ -39,9 +39,11 @@
                     <div class="card-body">
                         <h6 class="section-title mb-2"><i class="bi bi-1-circle text-gold me-2"></i>Fitur (Input)</h6>
                         <ul class="mb-0 text-muted">
-                            <li>Harga penutupan (<i>lag</i>) 1–7 hari sebelumnya</li>
-                            <li>Rata-rata bergerak sederhana (SMA 7 hari)</li>
+                            <li>Pembukaan, tertinggi, terendah — <b class="text-dark">relatif terhadap penutupan</b> hari itu (%)</li>
                             <li>Persentase perubahan harga harian</li>
+                            <li>Harga penutupan (<i>lag</i>) 1–3 hari sebelumnya relatif terhadap penutupan</li>
+                            <li>Volume perdagangan</li>
+                            <li><b class="text-dark">Target:</b> perubahan (return) harga penutupan hari berikutnya (%)</li>
                         </ul>
                     </div>
                 </div>
@@ -102,6 +104,7 @@
                         <ul class="mb-0 text-muted">
                             <li>Diramalkan <b class="text-dark">7 hari ke depan</b> secara <i>recursive</i></li>
                             <li>Hasil hari sebelumnya dipakai sebagai input hari berikutnya</li>
+                            <li>Return diproyeksikan ke harga: <b class="text-dark">penutupan terakhir × (1 + return%)</b></li>
                             <li>Setiap hari menghasilkan rentang Q10–Q90 + nilai tengah Q50</li>
                         </ul>
                     </div>

@@ -5,22 +5,43 @@ namespace App\Services;
 /**
  * Preprocessing & feature engineering sesuai panduan tsQRF:
  *  - urutkan berdasarkan tanggal
- *  - drop baris tidak lengkap (sudah dilakukan di parser, diulang untuk keamanan)
- *  - buat fitur Lag_1, Lag_2, Lag_3 dari Terakhir
- *  - target = Terakhir periode berikutnya (shift -1)
+ *  - drop baris yang tidak lengkap
+ *  - fitur: Pembukaan, Tertinggi, Terendah, Vol., Perubahan%, Lag_1, Lag_2, Lag_3
+ *  - target = harga penutupan periode berikutnya (shift -1)
  *
- * Fitur yang dipakai:
- *   Pembukaan, Tertinggi, Terendah, Vol., Perubahan%, Lag_1, Lag_2, Lag_3
+ * CATATAN PENTING (perbaikan akurasi):
+ * Random Forest berbasis pohon TIDAK BISA mengekstrapolasi di luar rentang data
+ * latih. Jika target berupa harga absolut (mis. 3.725 pada data latih), maka
+ * ketika harga terkini naik di atas 3.725 (mis. 4.189) semua sampel uji jatuh ke
+ * daun terujung yang sama sehingga prediksi nyangkut konstan dan meleset belasan
+ * persen. Karena itu fitur dan target dinyatakan sebagai RASIO (persen) terhadap
+ * harga penutupan hari yang sama — sifatnya stacioner sehingga model dapat
+ * digeneralisasi ke level harga mana pun. Prediksi harga akhir dihitung:
+ *
+ *     harga prediksi = penutupan terakhir x (1 + return prediksi%)
+ *
+ * sehingga prediksi selalu mengikuti level harga terkini.
  */
 class GoldPreprocessor
 {
-    public const FEATURES = ['pembukaan', 'tertinggi', 'terendah', 'volume', 'perubahan', 'lag1', 'lag2', 'lag3'];
+    public const FEATURES = [
+        'pembukaan/penutupan',
+        'tertinggi/penutupan',
+        'terendah/penutupan',
+        'volume',
+        'perubahan%',
+        'lag1/penutupan',
+        'lag2/penutupan',
+        'lag3/penutupan',
+    ];
 
     /**
      * @param array<int, array<string, mixed>> $rows hasil CsvParser
      * @return array{
-     *   dates: string[], X: array<int, float[]>, y: float[],
-     *   total: int, has_volume: bool, has_change: bool
+     *   dates: string[], sampleDates: string[], anchors: float[],
+     *   X: array<int, float[]>, y: float[],
+     *   rows: array<int, array<string, mixed>>,
+     *   total: int, model_rows: int, has_volume: bool, has_change: bool
      * }
      */
     public function build(array $rows): array
@@ -37,42 +58,58 @@ class GoldPreprocessor
 
         $n = count($clean);
         $dates = [];
-        $terakhir = [];
+        $close = [];
         foreach ($clean as $r) {
             $dates[] = $r['tanggal'];
-            $terakhir[] = (float) $r['terakhir'];
+            $close[] = (float) $r['terakhir'];
         }
 
         $X = [];
         $y = [];
+        $anchors = [];       // penutupan hari ke-i (dasar mengubah return jadi harga)
+        $sampleDates = [];   // tanggal target (hari ke-i+1)
         $hasVolume = true;
         $hasChange = true;
 
         for ($i = 3; $i < $n - 1; $i++) {
-            $lag1 = $terakhir[$i - 1];
-            $lag2 = $terakhir[$i - 2];
-            $lag3 = $terakhir[$i - 3];
+            $open = (float) $clean[$i]['pembukaan'];
+            $high = (float) $clean[$i]['tertinggi'];
+            $low = (float) $clean[$i]['terendah'];
+            $c = $close[$i];
+            $prev = $close[$i - 1];
 
-            $volume = isset($clean[$i]['volume']) ? (float) $clean[$i]['volume'] : 0.0;
-            $perubahan = isset($clean[$i]['perubahan']) ? (float) $clean[$i]['perubahan'] : 0.0;
-            if ($clean[$i]['volume'] === null || $clean[$i]['volume'] === '') {
+            // hindari pembagian nol / nilai tidak masuk akal
+            if ($c <= 0 || $prev <= 0 || $open <= 0) {
+                continue;
+            }
+
+            $volume = 0.0;
+            if (isset($clean[$i]['volume']) && $clean[$i]['volume'] !== null && $clean[$i]['volume'] !== '') {
+                $volume = (float) $clean[$i]['volume'];
+            } else {
                 $hasVolume = false;
             }
-            if ($clean[$i]['perubahan'] === null || $clean[$i]['perubahan'] === '') {
+
+            $change = ($c - $prev) / $prev * 100;
+            if (isset($clean[$i]['perubahan']) && $clean[$i]['perubahan'] !== null && $clean[$i]['perubahan'] !== '' && is_numeric($clean[$i]['perubahan'])) {
+                $change = (float) $clean[$i]['perubahan'];
+            } else {
                 $hasChange = false;
             }
 
             $X[] = [
-                (float) $clean[$i]['pembukaan'],
-                (float) $clean[$i]['tertinggi'],
-                (float) $clean[$i]['terendah'],
-                $volume,
-                $perubahan,
-                $lag1,
-                $lag2,
-                $lag3,
+                ($open - $c) / $c * 100,                          // pembukaan vs penutupan hari itu
+                ($high - $c) / $c * 100,                           // jarak tertinggi ke penutupan
+                ($low - $c) / $c * 100,                            // jarak terendah ke penutupan
+                $volume,                                           // volume
+                $change,                                           // perubahan % hari itu
+                ($prev - $c) / $c * 100,                           // lag1 terhadap penutupan
+                ($close[$i - 2] - $c) / $c * 100,                  // lag2 terhadap penutupan
+                ($close[$i - 3] - $c) / $c * 100,                  // lag3 terhadap penutupan
             ];
-            $y[] = (float) $clean[$i + 1]['terakhir'];
+            $y[] = ($close[$i + 1] - $c) / $c * 100;               // target: return hari berikutnya (%)
+            $anchors[] = $c;
+            $sampleDates[] = $dates[$i + 1];
         }
 
         if (count($X) === 0) {
@@ -81,6 +118,8 @@ class GoldPreprocessor
 
         return [
             'dates' => $dates,
+            'sampleDates' => $sampleDates,
+            'anchors' => $anchors,
             'X' => $X,
             'y' => $y,
             'rows' => $clean,

@@ -108,14 +108,15 @@ File upload harus berupa `.csv` (maks ±10 MB). Setelah upload, pelatihan berjal
 
 ### Fitur
 
-Untuk setiap baris `t`:
+Untuk setiap baris `t` (semua dinyatakan sebagai **rasio/persen terhadap penutupan hari itu**, agar model tetap valid ketika harga terkini berada di luar rentang data latih — pohon keputusan tidak bisa mengekstrapolasi):
 
-- Pembukaan, Tertinggi, Terendah, Vol., Perubahan% pada hari `t` (dalam juta / satuannya: harga dibagi 1000 agar stabil pada skala latihan)
-- `Lag_1, Lag_2, Lag_3`: nilai `Terakhir` dari 1, 2, dan 3 hari sebelumnya
+- Pembukaan, Tertinggi, Terendah dibanding penutupan hari `t` (%)
+- Vol., Perubahan% pada hari `t`
+- `Lag_1, Lag_2, Lag_3`: penutupan 1, 2, dan 3 hari sebelumnya relatif terhadap penutupan hari `t` (%)
 
 ### Target
 
-`Terakhir` pada periode berikutnya (`shift -1`). Baris terakhir tidak memiliki target sehingga tidak dipakai untuk training.
+**Return (perubahan %) penutupan periode berikutnya** (`shift -1`). Harga prediksi akhir = penutupan "hari itu" × (1 + return%), sehingga prediksi selalu berpusat pada level harga terkini. Baris terakhir tidak memiliki target sehingga tidak dipakai untuk training.
 
 ### Split data
 
@@ -142,7 +143,8 @@ Hasil: prediksi harga adalah **rentang `Q10 – Q90`**.
 ### Peramalan ke depan (recursive)
 
 - Horizon default **7 hari trading** (akhir pekan dilewati)
-- Untuk hari-hari ke depan, fitur OHLC/Vol/Perubahan% diasumsikan sama dengan baris observasi terakhir (sesuai keterbatasan panduan; hanya `Terakhir` hasil ramalan yang dipakai)
+- Fitur dibangun pada ruang rasio: OHLC/Vol diasumsikan mengikuti pola baris observasi terakhir, sedangkan lag/perubahan dihitung dari penutupan terakhir + hasil prediksi hari sebelumnya
+- Return hasil prediksi dikonversi ke harga: `penutupan terakhir × (1 + return%)`
 - Data testing perlu `horizon` hari buffer di akhir sehingga peramalan dimulai tepat setelah data aktual terakhir
 
 ## Metrik Evaluasi
@@ -155,17 +157,17 @@ Hasil: prediksi harga adalah **rentang `Q10 – Q90`**.
 | **Coverage** | Persentase aktual yang jatuh di dalam rentang Q10–Q90 |
 | **Avg Interval Width** | Rata-rata lebar rentang (Q90−Q10) pada data testing |
 
-Contoh hasil pada dataset contoh:
+Contoh hasil pada dataset 1.269 baris (2021–2026):
 
 ```
-MAE=22263.97  RMSE=28336.69  MAPE≈1.40%  Coverage=72.69%
+MAE=59.68  RMSE=84.26  MAPE≈1.33%  Coverage=53.75%  Lebar interval≈103
 ```
 
 ## Struktur Penting
 
 ```
 app/Services/CsvParser.php          # parsing CSV format Indonesia
-app/Services/GoldPreprocessor.php   # fitur lag & target
+app/Services/GoldPreprocessor.php   # fitur relatif (rasio %) & target return
 app/Services/GoldPipeline.php       # split, metrik, forecast recursive, kuantil
 app/Services/ML/RandomForest.php    # model Random Forest (PHP murni)
 app/Services/ML/Quantile.php        # perhitungan kuantil dari residual
