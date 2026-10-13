@@ -21,6 +21,9 @@ class GoldDataFetcher
 
     private const CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 
+    /** Jam penutupan sesi harian komoditas CME (17:00 waktu bursa). */
+    private const DAILY_CLOSE_HOUR = 17;
+
     public function __construct(private string $symbol = self::DEFAULT_SYMBOL)
     {
     }
@@ -82,9 +85,13 @@ class GoldDataFetcher
         $timestamps = $result['timestamp'] ?? [];
         $quote = $result['indicators']['quote'][0] ?? [];
 
-        // Tanggal hari ini menurut zona waktu bursa. Bar hari berjalan masih
-        // parsial (volume belum lengkap) sehingga dilewati.
-        $today = (new \DateTimeImmutable('now', $timezone))->format('Y-m-d');
+        // Waktu sekarang menurut zona waktu bursa. Bar untuk hari berjalan baru
+        // final setelah sesi harian ditutup (17:00 ET), jadi bar hari ini hanya
+        // dipakai bila sudah lewat jam penutupan — supaya saat dijalankan tepat
+        // ketika pasar buka, data hari sebelumnya tetap ikut terambil.
+        $now = new \DateTimeImmutable('now', $timezone);
+        $today = $now->format('Y-m-d');
+        $afterClose = (int) $now->format('G') >= self::DAILY_CLOSE_HOUR;
 
         $rows = [];
         foreach ($timestamps as $i => $ts) {
@@ -100,8 +107,8 @@ class GoldDataFetcher
 
             $date = (new \DateTimeImmutable('@' . $ts))->setTimezone($timezone)->format('Y-m-d');
 
-            if ($date >= $today) {
-                continue; // bar hari ini (belum selesai)
+            if ($date > $today || ($date === $today && !$afterClose)) {
+                continue; // bar hari ini/berikutnya masih berjalan (belum lengkap)
             }
             if ($this->isWeekend($date)) {
                 continue; // Sabtu/Minggu bukan hari perdagangan

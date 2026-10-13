@@ -58,7 +58,7 @@
 <div class="alert alert-light border d-flex flex-wrap align-items-center gap-2 mb-4">
     <i class="bi bi-arrow-repeat text-gold fs-5"></i>
     <span class="small mb-0">
-        <b>Pembaruan otomatis aktif:</b> data emas ditarik otomatis setiap hari pukul <b>17:30</b> dari Yahoo Finance
+        <b>Pembaruan otomatis aktif:</b> data emas ditarik otomatis setiap hari pukul <b>05:15 WIB</b> (saat pasar emas buka) dari Yahoo Finance
         (baris akhir pekan &amp; kolom kosong otomatis dibuang, tanggal yang bolong ditambal), lalu model dilatih ulang.
         Upload CSV manual tetap bisa dilakukan di bawah.
     </span>

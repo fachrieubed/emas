@@ -134,10 +134,12 @@ Yang dilakukan perintah ini:
 **Penjadwalan di Windows (XAMPP):** jalankan `auto-update-gold.bat` lewat Task Scheduler, atau daftarkan sekali dengan:
 
 ```bat
-schtasks /Create /TN "GoldAutoUpdate" /TR "C:\Xampp\htdocs\gold_update\auto-update-gold.bat" /SC DAILY /ST 17:30 /F
+schtasks /Create /TN "GoldAutoUpdate" /TR "C:\Xampp\htdocs\gold_update\auto-update-gold.bat" /SC DAILY /ST 05:15 /F
 ```
 
-Bila memakai `php artisan schedule:run` (Task Scheduler tiap 1 menit), jadwalnya sudah didefinisikan pada `routes/console.php` (harian 17:30 WIB).
+> ⚠️ **PC + XAMPP harus menyala** pada jam tersebut. Tugas dijadwalkan pada **05:15 WIB** (tepat saat pasar emas COMEX buka, 18:00 ET) agar data hari sebelumnya sudah final. Disarankan mengaktifkan opsi *"StartWhenAvailable"* / *"Run task as soon as possible after a scheduled start is missed"* supaya bila PC sempat mati, tugas dijalankan sesegera mungkin saat PC dinyalakan.
+
+Bila memakai `php artisan schedule:run` (Task Scheduler tiap 1 menit), jadwalnya sudah didefinisikan pada `routes/console.php` (harian **05:15 WIB** — tepat saat pasar emas buka).
 
 ## Model & Metodologi (tsQRF)
 
