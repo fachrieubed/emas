@@ -11,15 +11,15 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        $latest = GoldPrice::query()->orderByDesc('tanggal')->first();
-        $totalData = GoldPrice::query()->count();
-        $bucketDate = GoldPrice::query()->min('tanggal');
+        $latest = GoldPrice::query()->weekdaysOnly()->orderByDesc('tanggal')->first();
+        $totalData = GoldPrice::query()->weekdaysOnly()->count();
+        $bucketDate = GoldPrice::query()->weekdaysOnly()->min('tanggal');
 
         $modelRun = ModelRun::query()->where('status', 'done')->latest('id')->first();
         $processing = Upload::query()->where('status', 'processing')->latest()->first();
         $lastUpload = Upload::query()->latest()->first();
 
-        $history = GoldPrice::query()->orderBy('tanggal')->get(['tanggal', 'terakhir']);
+        $history = GoldPrice::query()->weekdaysOnly()->orderBy('tanggal')->get(['tanggal', 'terakhir']);
 
         $testPredictions = $modelRun
             ? $modelRun->predictions()->where('kind', 'test')->orderBy('tanggal')->get()
@@ -92,7 +92,7 @@ class DashboardController extends Controller
     public function goldData(Request $request)
     {
         $perPage = min(100, max(10, (int) $request->input('per_page', 25)));
-        $query = GoldPrice::query()->orderByDesc('tanggal');
+        $query = GoldPrice::query()->weekdaysOnly()->orderByDesc('tanggal');
 
         if ($search = $request->input('search')) {
             $query->search($search);

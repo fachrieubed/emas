@@ -23,8 +23,14 @@ class CsvParser
         'perubahan' => ['perubahan%', 'perubahan', 'chg%', 'change%', 'change', 'perubahan %'],
     ];
 
+    /** Jumlah baris dibuang karena jatuh pada hari Sabtu/Minggu (bukan hari perdagangan). */
+    private int $weekendDropped = 0;
+
+    /** Jumlah baris dibuang karena ada kolom kosong atau tanggal tidak valid. */
+    private int $incompleteDropped = 0;
+
     /**
-     * @return array{rows: array<int, array<string,mixed>>, header: array<int,string>, delimiter: string, total_rows: int, dropped: int, errors: array<int,string>}
+     * @return array{rows: array<int, array<string,mixed>>, header: array<int,string>, delimiter: string, total_rows: int, dropped: int, dropped_weekend: int, dropped_incomplete: int, errors: array<int,string>}
      */
     public function parse(string $filePath): array
     {
@@ -54,6 +60,8 @@ class CsvParser
         $rows = [];
         $dropped = 0;
         $errors = [];
+        $this->weekendDropped = 0;
+        $this->incompleteDropped = 0;
 
         for ($i = 1; $i < count($lines); $i++) {
             $raw = str_getcsv($lines[$i], $delimiter);
@@ -85,6 +93,8 @@ class CsvParser
             'delimiter' => $delimiter,
             'total_rows' => count($rows) + $dropped,
             'dropped' => $dropped,
+            'dropped_weekend' => $this->weekendDropped,
+            'dropped_incomplete' => $this->incompleteDropped,
             'errors' => $errors,
         ];
     }
@@ -146,6 +156,13 @@ class CsvParser
     {
         $tanggal = $this->parseDate($row['tanggal'] ?? '');
         if ($tanggal === null) {
+            $this->incompleteDropped++;
+            return null;
+        }
+
+        // Sabtu/Minggu bukan hari perdagangan emas -> dibuang.
+        if ($this->isWeekend($tanggal)) {
+            $this->weekendDropped++;
             return null;
         }
 
@@ -156,8 +173,10 @@ class CsvParser
         $volume = $this->parseVolume($row['volume'] ?? null);
         $perubahan = $this->parsePercent($row['perubahan'] ?? null);
 
-        // Baris tidak lengkap -> di-drop (sesuai panduan preprocessing)
-        if ($terakhir === null || $pembukaan === null || $tertinggi === null || $terendah === null) {
+        // Tidak boleh ada kolom kosong: seluruh kolom wajib terisi.
+        if ($terakhir === null || $pembukaan === null || $tertinggi === null
+            || $terendah === null || $volume === null || $perubahan === null) {
+            $this->incompleteDropped++;
             return null;
         }
 
@@ -170,6 +189,12 @@ class CsvParser
             'volume' => $volume,
             'perubahan' => $perubahan,
         ];
+    }
+
+    /** Hari Sabtu (6) atau Minggu (7) pada kalender. */
+    private function isWeekend(string $isoDate): bool
+    {
+        return (int) date('N', strtotime($isoDate)) >= 6;
     }
 
     private function parseDate(?string $value): ?string

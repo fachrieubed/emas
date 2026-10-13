@@ -55,6 +55,15 @@
     </div>
 </div>
 
+<div class="alert alert-light border d-flex flex-wrap align-items-center gap-2 mb-4">
+    <i class="bi bi-arrow-repeat text-gold fs-5"></i>
+    <span class="small mb-0">
+        <b>Pembaruan otomatis aktif:</b> data emas ditarik otomatis setiap hari pukul <b>17:30</b> dari Yahoo Finance
+        (baris akhir pekan &amp; kolom kosong otomatis dibuang, tanggal yang bolong ditambal), lalu model dilatih ulang.
+        Upload CSV manual tetap bisa dilakukan di bawah.
+    </span>
+</div>
+
 <div class="card mb-4">
     <div class="card-header bg-transparent d-flex flex-wrap justify-content-between align-items-center gap-2">
         <h6 class="section-title mb-0"><i class="bi bi-database text-gold me-2"></i>Data Pergerakan Emas ({{ number_format($data->total(), 0, ',', '.') }} baris)</h6>
@@ -200,12 +209,12 @@
                         <input type="text" inputmode="decimal" name="terendah" class="form-control" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Volume <span class="text-muted">(opsional)</span></label>
-                        <input type="text" inputmode="decimal" name="volume" class="form-control" placeholder="cth: 93820">
+                        <label class="form-label">Volume</label>
+                        <input type="text" inputmode="decimal" name="volume" class="form-control" placeholder="cth: 93820" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Perubahan % <span class="text-muted">(opsional)</span></label>
-                        <input type="text" inputmode="decimal" name="perubahan" class="form-control" placeholder="cth: 0.27">
+                        <label class="form-label">Perubahan %</label>
+                        <input type="text" inputmode="decimal" name="perubahan" class="form-control" placeholder="cth: 0.27" required>
                     </div>
                 </div>
                 <div class="alert alert-light border small mt-3 mb-0">

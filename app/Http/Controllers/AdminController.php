@@ -19,7 +19,7 @@ class AdminController extends Controller
     {
         $perPage = min(100, max(10, (int) $request->input('per_page', 25)));
 
-        $query = GoldPrice::query()->orderByDesc('tanggal');
+        $query = GoldPrice::query()->weekdaysOnly()->orderByDesc('tanggal');
 
         if ($search = trim((string) $request->input('search'))) {
             $query->search($search);
@@ -110,8 +110,8 @@ class AdminController extends Controller
             'pembukaan' => 'required|numeric',
             'tertinggi' => 'required|numeric',
             'terendah' => 'required|numeric',
-            'volume' => 'nullable|numeric',
-            'perubahan' => 'nullable|numeric',
+            'volume' => 'required|numeric',
+            'perubahan' => 'required|numeric',
         ]);
 
         $gold->update([

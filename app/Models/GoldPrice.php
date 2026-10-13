@@ -34,6 +34,15 @@ class GoldPrice extends Model
     }
 
     /**
+     * Hanya hari perdagangan (Senin–Jumat). Baris Sabtu/Minggu disembunyikan
+     * dari web dan tidak dipakai saat melatih model.
+     */
+    public function scopeWeekdaysOnly($query)
+    {
+        return $query->whereRaw('DAYOFWEEK(tanggal) NOT IN (1, 7)');
+    }
+
+    /**
      * Pencarian fleksibel: tanggal dalam berbagai format (d/m/Y, m/d/Y, Y-m-d,
      * bulan/tahun) serta harga dengan atau tanpa titik ribuan.
      */

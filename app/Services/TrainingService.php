@@ -75,7 +75,7 @@ class TrainingService
                 'status' => 'processing',
                 'total_rows' => $parsed['total_rows'],
                 'parsed_rows' => $totalRows,
-                'message' => "{$totalRows} baris data valid diproses (baris di-drop: {$parsed['dropped']}).",
+                'message' => "{$totalRows} baris data valid diproses (weekend di-drop: {$parsed['dropped_weekend']}, tidak lengkap: {$parsed['dropped_incomplete']}).",
             ]);
 
             // 3-7. Preprocessing, training, evaluasi, persisten
@@ -115,7 +115,7 @@ class TrainingService
                 echo '  * ' . $msg . PHP_EOL;
             };
 
-            $rows = GoldPrice::query()->orderBy('tanggal')->get()->map(fn ($g) => [
+            $rows = GoldPrice::query()->weekdaysOnly()->orderBy('tanggal')->get()->map(fn ($g) => [
                 'tanggal' => $g->tanggal->format('Y-m-d'),
                 'terakhir' => $g->terakhir,
                 'pembukaan' => $g->pembukaan,

@@ -13,6 +13,8 @@ Aplikasi web untuk melihat data harga emas dan memprediksi harga emas sebagai **
 - **Login Admin**: autentikasi khusus pengguna berperan `admin` (navbar → Admin). Halaman Admin hanya bisa diakses setelah login.
 - **Panel Admin**: upload file CSV data emas, **edit** data per baris, **hapus** data per baris, dan **hapus semua data** (beserta model & prediksi). Dilengkapi pencarian & pagination.
 - **Latih Ulang**: setelah mengedit/menghapus data, tombol *Latih Ulang Model* melatih ulang tsQRF dari data yang ada (tanpa perlu upload ulang).
+- **Pembaruan data otomatis harian**: sistem menarik data emas terbaru dari Yahoo Finance (`GC=F`) secara otomatis tiap hari, menambal tanggal perdagangan yang belum ada, lalu melatih ulang model. Upload CSV manual tetap tersedia.
+- **Data bersih**: baris Sabtu/Minggu (bukan hari perdagangan) otomatis dibuang dan baris yang memiliki kolom kosong otomatis ditolak — sehingga tidak ada sel kosong di database.
 - **Tanpa dependensi Python/sklearn**: model Random Forest ditulis murni dalam PHP.
 - **Tampilan bersih & klasik**: latar terang krem, aksen emas, tipografi sistem yang rapi, dan navigasi breadcrumb antar halaman.
 
@@ -102,7 +104,40 @@ Aturan parsing:
 - **Vol.** (volume): akhiran `K` (ribu), `M` (juta), `B` (miliar). Contoh `93.82K` = 93820.
 - **Perubahan%**: contoh `0,27%` atau `-1,54%`.
 
+Aturan kebersihan data:
+
+- Baris **Sabtu/Minggu** otomatis dibuang (bukan hari perdagangan).
+- Baris dengan **kolom kosong** (termasuk `Vol.` atau `Perubahan%`) otomatis ditolak, sehingga database tidak berisi nilai kosong.
+
 File upload harus berupa `.csv` (maks ±10 MB). Setelah upload, pelatihan berjalan otomatis di background (progress terlihat di dashboard dan panel admin).
+
+## Pembaruan Data Otomatis
+
+Selain upload manual, data emas dapat diperbarui otomatis setiap hari:
+
+```bash
+php artisan gold:update              # tarik data terbaru + tambal tanggal kosong + latih ulang
+php artisan gold:update --no-retrain # sinkronkan data saja (tanpa latih ulang)
+php artisan gold:update --days=90    # atur rentang penyegaran data terbaru
+```
+
+Sumber data: **Yahoo Finance** simbol `GC=F` (Gold Futures COMEX) — nilainya identik dengan data historis yang dipakai sistem, sehingga aman untuk menambal tanggal yang belum ada. (Investing.com tidak bisa dipakai otomatis karena dilindungi Cloudflare / HTTP 403.)
+
+Yang dilakukan perintah ini:
+
+1. Menarik data harian terbaru; baris hari Sabtu/Minggu dan baris tanpa volume dilewati.
+2. **Menambal tanggal perdagangan yang belum ada** (mis. hari Jumat yang sempat hilang) tanpa menimpa data lama yang sudah benar.
+3. Menghapus sisa baris weekend dan baris berkolom kosong.
+4. Menghitung ulang kolom `Perubahan%` mengikuti urutan hari perdagangan.
+5. Melatih ulang model tsQRF bila ada data baru/berubah (`--no-retrain` untuk melewati).
+
+**Penjadwalan di Windows (XAMPP):** jalankan `auto-update-gold.bat` lewat Task Scheduler, atau daftarkan sekali dengan:
+
+```bat
+schtasks /Create /TN "GoldAutoUpdate" /TR "C:\Xampp\htdocs\gold_update\auto-update-gold.bat" /SC DAILY /ST 17:30 /F
+```
+
+Bila memakai `php artisan schedule:run` (Task Scheduler tiap 1 menit), jadwalnya sudah didefinisikan pada `routes/console.php` (harian 17:30 WIB).
 
 ## Model & Metodologi (tsQRF)
 
@@ -198,6 +233,7 @@ storage/app/samples/harga_emas_contoh.csv   # dataset contoh (1137 baris)
 php artisan gold:make-admin {email} {password} --name=  # buat/pakai akun admin
 php artisan gold:seed-sample              # impor contoh + latih + ramal
 php artisan gold:process {uploadId}       # proses upload tertentu di background
+php artisan gold:update                   # tarik data emas terbaru otomatis (Yahoo Finance)
 php artisan gold:retrain                  # latih ulang tsQRF dari data DB
 php artisan migrate --seed                # (opsional) jalankan semua seeder
 ```
