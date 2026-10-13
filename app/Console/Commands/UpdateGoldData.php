@@ -3,12 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\GoldPrice;
-use App\Services\GoldDataFetcher;
+use App\Services\GoldDataSync;
 use App\Services\TrainingService;
 use Exception;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -40,90 +39,38 @@ class UpdateGoldData extends Command
 
     protected $description = 'Ambil data harga emas terbaru otomatis (Yahoo Finance), tambal tanggal kosong, lalu simpan ke database';
 
-    public function handle(GoldDataFetcher $fetcher, TrainingService $training): int
+    public function handle(GoldDataSync $sync, TrainingService $training): int
     {
         $days = max(3, (int) $this->option('days'));
 
         $minDate = GoldPrice::query()->weekdaysOnly()->min('tanggal');
         $maxDate = GoldPrice::query()->weekdaysOnly()->max('tanggal');
 
-        $this->info('Sinkronisasi data emas otomatis (sumber: Yahoo Finance GC=F)...');
+        $this->info('Sinkronisasi data emas otomatis (sumber: ' . GoldDataSync::SOURCE . ')...');
         if ($minDate) {
             $this->line("  Data saat ini: {$minDate} s/d {$maxDate}");
         }
 
         try {
-            $rows = $minDate ? $fetcher->fetchSince($minDate) : $fetcher->fetch($days);
+            $result = $sync->sync($days);
         } catch (Exception $e) {
             $this->error($e->getMessage());
             Log::error('gold:update gagal mengambil data: ' . $e->getMessage());
             $this->recordSync([
                 'status' => 'error',
-                'source' => 'Yahoo Finance (GC=F)',
+                'source' => GoldDataSync::SOURCE,
                 'message' => $e->getMessage(),
             ]);
 
             return self::FAILURE;
         }
 
-        if (count($rows) === 0) {
-            $this->warn('Tidak ada data yang bisa diambil dari sumber.');
-
-            return self::SUCCESS;
-        }
-
-        // Jangan menambah data sebelum tanggal awal dataset.
-        if ($minDate) {
-            $rows = array_values(array_filter($rows, fn ($r) => $r['tanggal'] >= $minDate));
-        }
-
-        $existing = GoldPrice::query()->pluck('tanggal')
-            ->map(fn ($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : substr((string) $d, 0, 10))
-            ->flip();
-
-        $recentCutoff = (new \DateTimeImmutable('now'))->modify("-{$days} days")->format('Y-m-d');
-
-        $inserted = 0;
-        $updated = 0;
-        $kept = 0;
-
-        DB::transaction(function () use ($rows, $existing, $recentCutoff, &$inserted, &$updated, &$kept) {
-            foreach ($rows as $row) {
-                $date = $row['tanggal'];
-                $payload = [
-                    'tanggal' => $date,
-                    'pembukaan' => $row['pembukaan'],
-                    'tertinggi' => $row['tertinggi'],
-                    'terendah' => $row['terendah'],
-                    'terakhir' => $row['terakhir'],
-                    'volume' => $row['volume'],
-                ];
-
-                if (!$existing->has($date)) {
-                    $payload['perubahan'] = 0; // diisi pada tahap hitung ulang
-                    GoldPrice::create($payload);
-                    $inserted++;
-                } elseif ($date >= $recentCutoff) {
-                    // segarkan data terbaru agar bila ada nilai janggal ikut diperbaiki
-                    GoldPrice::query()->where('tanggal', $date)->update($payload);
-                    $updated++;
-                } else {
-                    $kept++; // data lama sudah benar & cocok dengan sumber
-                }
-            }
-        });
-
-        // Kebijakan "tidak boleh ada data kosong": buang baris weekend & baris berkolom kosong.
-        $deletedWeekend = GoldPrice::query()->whereRaw('DAYOFWEEK(tanggal) IN (1, 7)')->delete();
-        $deletedEmpty = GoldPrice::query()
-            ->where(function ($q) {
-                $q->whereNull('terakhir')->orWhereNull('pembukaan')->orWhereNull('tertinggi')
-                    ->orWhereNull('terendah')->orWhereNull('volume')->orWhereNull('perubahan');
-            })
-            ->delete();
-
-        // Hitung ulang Perubahan% mengikuti urutan hari perdagangan (setelah tanggal ditambal).
-        $changed = $this->recomputeChange();
+        $inserted = (int) $result['inserted'];
+        $updated = (int) $result['updated'];
+        $kept = (int) $result['kept'];
+        $deletedWeekend = (int) $result['deleted_weekend'];
+        $deletedEmpty = (int) $result['deleted_empty'];
+        $changed = (int) $result['changed'];
 
         $this->info("Sinkronisasi selesai: {$inserted} baris baru, {$updated} diperbarui, {$kept} lama dipertahankan.");
         if ($deletedWeekend || $deletedEmpty) {
@@ -137,15 +84,15 @@ class UpdateGoldData extends Command
 
         $this->recordSync([
             'status' => 'ok',
-            'source' => 'Yahoo Finance (GC=F)',
+            'source' => GoldDataSync::SOURCE,
             'inserted' => $inserted,
             'updated' => $updated,
             'kept' => $kept,
             'deleted_weekend' => $deletedWeekend,
             'deleted_empty' => $deletedEmpty,
             'changed' => $changed,
-            'total' => GoldPrice::query()->weekdaysOnly()->count(),
-            'latest_date' => GoldPrice::query()->weekdaysOnly()->max('tanggal'),
+            'total' => (int) $result['total'],
+            'latest_date' => $result['latest_date'],
             'retrain' => $this->option('no-retrain') ? 'skipped' : 'pending',
             'message' => null,
         ]);
@@ -195,34 +142,5 @@ class UpdateGoldData extends Command
             // Gagal menyimpan info tidak boleh menggagalkan proses sinkronisasi.
             Log::warning('Gagal menyimpan info sinkronisasi: ' . $e->getMessage());
         }
-    }
-
-    /**
-     * Hitung ulang kolom Perubahan% = (penutupan_t - penutupan_{t-1}) / penutupan_{t-1} x 100
-     * berdasarkan urutan hari perdagangan yang sudah bersih.
-     */
-    private function recomputeChange(): int
-    {
-        $rows = GoldPrice::query()->weekdaysOnly()->orderBy('tanggal')->get(['id', 'terakhir', 'perubahan']);
-        $prev = null;
-        $changed = 0;
-
-        DB::transaction(function () use ($rows, &$prev, &$changed) {
-            foreach ($rows as $g) {
-                $close = (float) $g->terakhir;
-                $chg = ($prev !== null && $prev != 0.0)
-                    ? round(($close - $prev) / $prev * 100, 2)
-                    : ($g->perubahan !== null ? (float) $g->perubahan : 0.0);
-
-                if ((float) $g->perubahan !== (float) $chg) {
-                    GoldPrice::query()->whereKey($g->id)->update(['perubahan' => $chg]);
-                    $changed++;
-                }
-
-                $prev = $close;
-            }
-        });
-
-        return $changed;
     }
 }

@@ -121,6 +121,8 @@ php artisan gold:update --no-retrain # sinkronkan data saja (tanpa latih ulang)
 php artisan gold:update --days=90    # atur rentang penyegaran data terbaru
 ```
 
+> 💡 **Upload CSV manual juga otomatis menambal tanggal yang belum ada** dari Yahoo Finance: setelah file diproses, sistem menambal hari perdagangan yang bolong (mis. Jumat) lalu melatih model dengan dataset lengkap. Bila sumber tidak dapat diakses, upload tetap diterima apa adanya.
+
 Sumber data: **Yahoo Finance** simbol `GC=F` (Gold Futures COMEX) — nilainya identik dengan data historis yang dipakai sistem, sehingga aman untuk menambal tanggal yang belum ada. (Investing.com tidak bisa dipakai otomatis karena dilindungi Cloudflare / HTTP 403.)
 
 Yang dilakukan perintah ini:

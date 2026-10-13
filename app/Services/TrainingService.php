@@ -25,6 +25,7 @@ class TrainingService
         protected CsvParser $parser,
         protected GoldPreprocessor $preprocessor,
         protected GoldPipeline $pipeline,
+        protected GoldDataSync $sync,
     ) {
     }
 
@@ -71,11 +72,34 @@ class TrainingService
             $totalRows = count($rows);
             $minDate = $rows ? min(array_column($rows, 'tanggal')) : null;
             $maxDate = $rows ? max(array_column($rows, 'tanggal')) : null;
+
+            // 2b. Tambal tanggal perdagangan yang belum ada (mis. hari Jumat yang bolong)
+            //     dari sumber Yahoo Finance supaya dataset selalu lengkap. Best-effort:
+            //     bila sumber tidak bisa diakses, upload tetap diterima apa adanya.
+            $added = 0;
+            try {
+                $syncResult = $this->sync->sync();
+                $added = (int) $syncResult['inserted'];
+                if ($added > 0) {
+                    $progress('Menambal ' . $added . ' tanggal yang belum ada dari ' . $syncResult['source'] . '...');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Upload: lewati penambalan tanggal dari sumber: ' . $e->getMessage());
+            }
+
+            // Data yang dipakai training = isi database setelah ditambal
+            // (lengkap + Perubahan% sudah dihitung ulang mengikuti urutan hari).
+            $rows = $this->rowsFromDatabase();
+            $totalRows = count($rows);
+            $minDate = $rows ? $rows[0]['tanggal'] : null;
+            $maxDate = $rows ? $rows[count($rows) - 1]['tanggal'] : null;
+
             $upload->update([
                 'status' => 'processing',
                 'total_rows' => $parsed['total_rows'],
                 'parsed_rows' => $totalRows,
-                'message' => "{$totalRows} baris data valid diproses (weekend di-drop: {$parsed['dropped_weekend']}, tidak lengkap: {$parsed['dropped_incomplete']}).",
+                'message' => "{$totalRows} baris data valid diproses (weekend di-drop: {$parsed['dropped_weekend']}, tidak lengkap: {$parsed['dropped_incomplete']}"
+                    . ($added > 0 ? ", tanggal ditambal otomatis: {$added})." : ')'),
             ]);
 
             // 3-7. Preprocessing, training, evaluasi, persisten
@@ -115,15 +139,7 @@ class TrainingService
                 echo '  * ' . $msg . PHP_EOL;
             };
 
-            $rows = GoldPrice::query()->weekdaysOnly()->orderBy('tanggal')->get()->map(fn ($g) => [
-                'tanggal' => $g->tanggal->format('Y-m-d'),
-                'terakhir' => $g->terakhir,
-                'pembukaan' => $g->pembukaan,
-                'tertinggi' => $g->tertinggi,
-                'terendah' => $g->terendah,
-                'volume' => $g->volume,
-                'perubahan' => $g->perubahan,
-            ])->values()->all();
+            $rows = $this->rowsFromDatabase();
 
             if (count($rows) === 0) {
                 throw new RuntimeException('Tidak ada data emas di database untuk dilatih ulang.');
@@ -232,6 +248,26 @@ class TrainingService
             . ', Coverage=' . round($metrics['coverage'], 2) . '%.');
 
         return $modelRun->refresh();
+    }
+
+    /**
+     * Muat seluruh data emas aktif dari database dalam bentuk baris yang sama
+     * dengan hasil parser CSV (dipakai retrain & setelah upload ditambal).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function rowsFromDatabase(): array
+    {
+        return GoldPrice::query()->weekdaysOnly()->orderBy('tanggal')->get()
+            ->map(fn ($g) => [
+                'tanggal' => $g->tanggal->format('Y-m-d'),
+                'terakhir' => $g->terakhir,
+                'pembukaan' => $g->pembukaan,
+                'tertinggi' => $g->tertinggi,
+                'terendah' => $g->terendah,
+                'volume' => $g->volume,
+                'perubahan' => $g->perubahan,
+            ])->values()->all();
     }
 
     private function createModelRun(array $params, ?int $uploadId): ModelRun
