@@ -139,7 +139,13 @@ Yang dilakukan perintah ini:
 schtasks /Create /TN "GoldAutoUpdate" /TR "C:\Xampp\htdocs\gold_update\auto-update-gold.bat" /SC DAILY /ST 05:15 /F
 ```
 
-> ⚠️ **PC + XAMPP harus menyala** pada jam tersebut. Tugas dijadwalkan pada **05:15 WIB** (tepat saat pasar emas COMEX buka, 18:00 ET) agar data hari sebelumnya sudah final. Disarankan mengaktifkan opsi *"StartWhenAvailable"* / *"Run task as soon as possible after a scheduled start is missed"* supaya bila PC sempat mati, tugas dijalankan sesegera mungkin saat PC dinyalakan.
+> ℹ️ **XAMPP dinyalakan otomatis oleh script bila masih mati**: `auto-update-gold.bat` memanggil `ensure-xampp.ps1` yang menyalakan Apache/MySQL dan menunggu MySQL siap sebelum `gold:update` dijalankan — memperbaiki kegagalan `SQLSTATE[HY000] [2002]` (connection refused) yang terjadi bila XAMPP belum nyala pada jam jadwal. **PC tetap harus menyala** pada jam tersebut. Tugas dijadwalkan pada **05:15 WIB** (tepat saat pasar emas COMEX buka, 18:00 ET) agar data hari sebelumnya sudah final. Disarankan mengaktifkan opsi *"StartWhenAvailable"* / *"Run task as soon as possible after a scheduled start is missed"* supaya bila PC sempat mati, tugas dijalankan sesegera mungkin saat PC dinyalakan.
+
+**Cara memantau apakah update otomatis berjalan:**
+
+1. **Indikator di website** — Dashboard & Admin menampilkan *"Terakhir sinkron: \<tanggal jam\> WIB"* (termasuk jumlah baris baru/diperbarui; bila gagal, muncul pesan errornya).
+2. **Log** — `storage\logs\auto-update.log` (isi tiap kali jalan: jumlah baris ditambal, hasil pelatihan, atau error).
+3. **Task Scheduler** — task `GoldAutoUpdate` → kolom *Last Run Time* dan *Last Result* (`0` = sukses).
 
 Bila memakai `php artisan schedule:run` (Task Scheduler tiap 1 menit), jadwalnya sudah didefinisikan pada `routes/console.php` (harian **05:15 WIB** — tepat saat pasar emas buka).
 
